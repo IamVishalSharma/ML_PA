@@ -1,0 +1,103 @@
+---
+title: "Prediction Assignment"
+author: "Vishal Sharma"
+date: "Wednesday, December 17, 2014"
+output: html_document
+----------------------------
+
+Build a machine learning algorithm to predict activity quality from activity monitors
+-------------------------------------------------------------------------------------
+
+**Add the required Libraries**
+
+```{r HeaderFile_Section,echo=TRUE,message=FALSE}
+library(Hmisc)
+library(caret)
+library(randomForest)
+library(foreach)
+library(doParallel)
+set.seed(2048)
+options(warn=-1)
+```
+
+**STEP-1 :: Getting and Cleaning the data**
+
+- 1- Read the Assignment data files from current working director
+- 2- Some values contained a "#DIV/0!" , Those are replaced with NA
+- 3- Casted all columns 8 to the end to be numeric
+- 4- Chose a feature set that only included complete columns
+- 5- Remove User name, timestamps and windows
+
+
+```{r GettingDataSection,echo=TRUE}
+#Load the PML Training data set file
+dataTraining <- read.csv("pml-training.csv", na.strings=c("#DIV/0!") )
+#Load the PML Test data set file
+dataEval  <- read.csv("pml-testing.csv", na.strings=c("#DIV/0!") )
+# Make Columns to be numeric from 8rt coloum onwards for PML Training data set file
+for(i in c(8:ncol(dataTraining)-1)) {dataTraining[,i] = as.numeric(as.character(dataTraining[,i]))}
+# Make Columns to be numeric from 8rt coloum onwards for PML Test data set file
+for(i in c(8:ncol(dataEval)-1)) {dataEval[,i] = as.numeric(as.character(dataEval[,i]))}
+#Chose a feature set that only included complete columns for PML Training data set file
+feature_set <- colnames(dataTraining[colSums(is.na(dataTraining)) == 0])[-(1:7)]
+model_data <- dataTraining[feature_set]
+feature_set
+dim(dataTraining); dim(dataEval)
+
+```
+
+**STEP-2 :: Partioning  the training set**
+- Partioning Training data set into two data sets, 75% for training, 25% for testing
+
+```{r PartioningTheTrainingSet ,echo=TRUE}
+inTrain  <- createDataPartition(y=model_data$classe, p=0.75, list=FALSE )
+training <- model_data[inTrain ,]
+testing <- model_data[-inTrain ,]
+dim(training); dim(testing)
+```
+**STEP-3 :: Using ML algorithms for prediction:: Random Forests**
+
+- 1- Use of parallel processing to build this model using registerDoParallel
+- 2- Build 5 random forests with 150 trees each
+
+```{r Modeling ,echo=TRUE}
+registerDoParallel()
+x <- training[-ncol(training)]
+y <- training$classe
+rfModel <- foreach(ntree=rep(150, 6), .combine=randomForest::combine, .packages='randomForest') %dopar% {randomForest(x, y, ntree=ntree)                                                                                                        }
+```
+
+**STEP-4:: Predicting in-sample error in both Training and Test data**
+```{r PredictSampleError ,echo=TRUE}
+#Create Confusion Matrix for Training Data
+predictionsTraining <- predict(rfModel, newdata=training)
+confusionMatrix(predictionsTraining,training$classe)
+#Create Confusion Matrix for Test Data
+predictionsTesting <- predict(rfModel, newdata=testing)
+confusionMatrix(predictionsTesting,testing$classe)
+```
+**Note On :: how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did**
+
+The two machine learning algorithm is used for the cross validation : regression tree (rpart) and random forest.
+Regressioin Tree is not mentioned to keep document short. but it resulted in 89% accuracy. So 
+the random forest algorithm is picked up.
+The Machine Learning algorithm as Random forest resulted in the 99.5% accuracy on the test data as seen in the result output of confusion matrix mentioned above. So it is assumed to be worked very well on test data set given for the assignment. After running the below code and submission it proved also.
+
+
+**Generating Files to submit as answers for the Assignment**
+```{r Submission ,echo=TRUE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+x <- dataEval
+x <- x[feature_set[feature_set!='classe']]
+answers <- predict(rfModel, newdata=x)
+
+pml_write_files(answers)
+```
+Credit Note : I am thankfull to all the people for the posts they posted ,  i looked to understand the concepts and make me capable to complete the assignment.
+
